@@ -34,3 +34,11 @@ export async function createVehicleForClient(clientId, payload) {
   const { data } = await apiClient.post(`/admin/clients/${clientId}/vehicles`, payload);
   return data;
 }
+
+export async function deleteAdminClient(clientId) {
+  await apiClient.delete(`/admin/clients/${clientId}`);
+}
+
+export async function deleteClientVehicle(clientId, vehicleId) {
+  await apiClient.delete(`/admin/clients/${clientId}/vehicles/${vehicleId}`);
+}

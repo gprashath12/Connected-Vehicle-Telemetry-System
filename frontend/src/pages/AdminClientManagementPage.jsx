@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, ChevronDown, ChevronRight, Copy, Check, Loader2, X } from 'lucide-react';
+import { Plus, ChevronDown, ChevronRight, Copy, Check, Loader2, X, Trash2 } from 'lucide-react';
 import Topbar from '../components/layout/Topbar';
 import { Card, CardHeader, CardBody } from '../components/common/Card';
 import LoadingBlock from '../components/common/LoadingBlock';
@@ -10,11 +10,13 @@ import {
   createAdminClient,
   fetchClientVehicles,
   createVehicleForClient,
+  deleteAdminClient,
+  deleteClientVehicle,
 } from '../api/admin';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_RE = /^[^\s@]+@gmail+\.com$/;
 const CURRENT_YEAR = new Date().getFullYear();
 
 const FUEL_TYPES = ['PETROL', 'DIESEL', 'CNG', 'ELECTRIC', 'HYBRID'];
@@ -111,7 +113,11 @@ function CreateClientModal({ onClose }) {
     if (!fullName.trim()) e.fullName = 'Full name is required.';
     if (!email.trim()) e.email = 'Email is required.';
     else if (!EMAIL_RE.test(email)) e.email = 'Enter a valid email address.';
-    if (password && password.length < 6) e.password = 'Password must be at least 6 characters.';
+    if (password) {
+      if (password.length <= 5) e.password = 'Password must be more than 5 characters.';
+      else if (!/[A-Z]/.test(password)) e.password = 'Password must contain at least one uppercase letter.';
+      else if (!/[^A-Za-z0-9]/.test(password)) e.password = 'Password must contain at least one special character.';
+    }
     setErrs(e);
     return Object.keys(e).length === 0;
   }
@@ -357,7 +363,10 @@ function ModalShell({ title, onClose, children }) {
 // ─── Client Row with expandable vehicles ─────────────────────────────────────
 
 function ClientRow({ client, onAddVehicle }) {
+  const qc = useQueryClient();
   const [expanded, setExpanded] = useState(false);
+  const [confirmDeleteClient, setConfirmDeleteClient] = useState(false);
+  const [deletingVehicleId, setDeletingVehicleId] = useState(null);
 
   const vehiclesQuery = useQuery({
     queryKey: ['client-vehicles', client.userId],
@@ -366,6 +375,23 @@ function ClientRow({ client, onAddVehicle }) {
   });
 
   const vehicles = vehiclesQuery.data || [];
+
+  const deleteClientMut = useMutation({
+    mutationFn: () => deleteAdminClient(client.userId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-clients'] });
+    },
+    onError: () => setConfirmDeleteClient(false),
+  });
+
+  const deleteVehicleMut = useMutation({
+    mutationFn: ({ vehicleId }) => deleteClientVehicle(client.userId, vehicleId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['client-vehicles', client.userId] });
+      setDeletingVehicleId(null);
+    },
+    onError: () => setDeletingVehicleId(null),
+  });
 
   return (
     <>
@@ -387,13 +413,41 @@ function ClientRow({ client, onAddVehicle }) {
           {new Date(client.createdAt).toLocaleDateString()}
         </Td>
         <Td>
-          <button
-            onClick={() => onAddVehicle(client)}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-          >
-            <Plus className="h-3 w-3" />
-            Add Vehicle
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onAddVehicle(client)}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            >
+              <Plus className="h-3 w-3" />
+              Add Vehicle
+            </button>
+            {confirmDeleteClient ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Delete?</span>
+                <button
+                  onClick={() => deleteClientMut.mutate()}
+                  disabled={deleteClientMut.isPending}
+                  className="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-red-600 hover:bg-red-700 text-white disabled:opacity-60"
+                >
+                  {deleteClientMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Yes'}
+                </button>
+                <button
+                  onClick={() => setConfirmDeleteClient(false)}
+                  className="px-2 py-1 text-xs rounded-md border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                >
+                  No
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDeleteClient(true)}
+                className="p-1.5 text-slate-400 hover:text-red-500 dark:hover:text-red-400 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                title="Delete client"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </Td>
       </tr>
       {expanded && (
@@ -412,7 +466,8 @@ function ClientRow({ client, onAddVehicle }) {
                       <th className="pb-1.5 pr-4 text-slate-500 dark:text-slate-400 font-medium">Make / Model</th>
                       <th className="pb-1.5 pr-4 text-slate-500 dark:text-slate-400 font-medium">Year</th>
                       <th className="pb-1.5 pr-4 text-slate-500 dark:text-slate-400 font-medium">Fuel</th>
-                      <th className="pb-1.5 text-slate-500 dark:text-slate-400 font-medium">Status</th>
+                      <th className="pb-1.5 pr-4 text-slate-500 dark:text-slate-400 font-medium">Status</th>
+                      <th className="pb-1.5 text-slate-500 dark:text-slate-400 font-medium">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -422,7 +477,35 @@ function ClientRow({ client, onAddVehicle }) {
                         <td className="py-1.5 pr-4 text-slate-600 dark:text-slate-300">{v.manufacturer} {v.model}</td>
                         <td className="py-1.5 pr-4 text-slate-600 dark:text-slate-300">{v.year ?? '—'}</td>
                         <td className="py-1.5 pr-4 text-slate-600 dark:text-slate-300">{v.fuelType ?? '—'}</td>
-                        <td className="py-1.5">{statusBadge(v.vehicleStatus ?? 'ACTIVE')}</td>
+                        <td className="py-1.5 pr-4">{statusBadge(v.vehicleStatus ?? 'ACTIVE')}</td>
+                        <td className="py-1.5">
+                          {deletingVehicleId === v.vehicleid ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400">Delete?</span>
+                              <button
+                                onClick={() => deleteVehicleMut.mutate({ vehicleId: v.vehicleid })}
+                                disabled={deleteVehicleMut.isPending}
+                                className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded bg-red-600 hover:bg-red-700 text-white disabled:opacity-60"
+                              >
+                                {deleteVehicleMut.isPending ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : 'Yes'}
+                              </button>
+                              <button
+                                onClick={() => setDeletingVehicleId(null)}
+                                className="px-1.5 py-0.5 text-[10px] rounded border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                              >
+                                No
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setDeletingVehicleId(v.vehicleid)}
+                              className="p-1 text-slate-400 hover:text-red-500 dark:hover:text-red-400 rounded hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                              title="Delete vehicle"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

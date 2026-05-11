@@ -4,7 +4,7 @@ import { Truck, Loader2, Mail, Lock, Eye, EyeOff, ArrowRight, ShieldCheck, Activ
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from '../components/common/ThemeToggle';
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_RE = /^[^\s@]+@gmail+\.com$/;
 
 function validateEmail(v) {
   if (!v.trim()) return 'Email is required.';

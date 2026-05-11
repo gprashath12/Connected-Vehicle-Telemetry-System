@@ -48,10 +48,10 @@ public class DataSeeder implements CommandLineRunner {
     );
 
     private static final List<UserSpec> USERS = List.of(
-            new UserSpec("admin@gmail.com",  "admin123",  "System Admin",  Role.ADMIN),
-            new UserSpec("client1@gmail.com", "client123", "Client One",   Role.CLIENT),
-            new UserSpec("client2@gmail.com", "client123", "Client Two",   Role.CLIENT),
-            new UserSpec("client3@gmail.com", "client123", "Client Three", Role.CLIENT)
+            new UserSpec("admin@gmail.com",  "Admin@123",  "System Admin",  Role.ADMIN),
+            new UserSpec("client1@gmail.com", "Client@123", "Client One",   Role.CLIENT),
+            new UserSpec("client2@gmail.com", "Client@123", "Client Two",   Role.CLIENT),
+            new UserSpec("client3@gmail.com", "Client@123", "Client Three", Role.CLIENT)
     );
 
     private record UserSpec(String email, String password, String fullName, Role role) {}

@@ -57,4 +57,18 @@ public class AdminController {
             @Valid @RequestBody CreateVehicleRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(adminService.createVehicleForClient(clientId, req));
     }
+
+    @DeleteMapping("/clients/{clientId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> deleteClient(@PathVariable Long clientId) {
+        adminService.deleteClient(clientId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/clients/{clientId}/vehicles/{vehicleId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> deleteVehicle(@PathVariable Long clientId, @PathVariable Long vehicleId) {
+        adminService.deleteVehicle(vehicleId);
+        return ResponseEntity.noContent().build();
+    }
 }

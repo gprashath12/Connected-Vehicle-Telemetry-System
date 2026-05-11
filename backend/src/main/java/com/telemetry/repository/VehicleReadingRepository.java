@@ -23,4 +23,6 @@ public interface VehicleReadingRepository extends JpaRepository<VehicleReading, 
 
     @Query("SELECT r.vehicleid, MAX(r.speed) as peakSpeed FROM VehicleReading r WHERE r.ts >= :startOfDay GROUP BY r.vehicleid ORDER BY peakSpeed DESC LIMIT 5")
     List<Object[]> findTop5ByPeakSpeedToday(@Param("startOfDay") Instant startOfDay);
+
+    void deleteByVehicleid(Long vehicleid);
 }

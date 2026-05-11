@@ -145,6 +145,29 @@ public class AdminService {
         return new String(pw);
     }
 
+    @Transactional
+    public void deleteClient(Long clientId) {
+        User client = userRepo.findById(clientId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Client not found"));
+        if (client.getRole() != Role.CLIENT) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User is not a client");
+        }
+        List<Vehicle> vehicles = vehicleRepo.findByOwnerOrdered(clientId);
+        for (Vehicle v : vehicles) {
+            readingRepo.deleteByVehicleid(v.getVehicleid());
+        }
+        vehicleRepo.deleteAll(vehicles);
+        userRepo.delete(client);
+    }
+
+    @Transactional
+    public void deleteVehicle(Long vehicleId) {
+        Vehicle vehicle = vehicleRepo.findById(vehicleId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Vehicle not found"));
+        readingRepo.deleteByVehicleid(vehicleId);
+        vehicleRepo.delete(vehicle);
+    }
+
     @Transactional(readOnly = true)
     public List<AdminVehicleDto> globalFleet() {
         long activeCutoff = System.currentTimeMillis() - 24L * 60 * 60 * 1000;

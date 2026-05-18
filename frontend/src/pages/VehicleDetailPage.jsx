@@ -124,7 +124,7 @@ export default function VehicleDetailPage() {
           ) : !latestQuery.data || (latestQuery.data.lat == null && latestQuery.data.lon == null) ? (
             <EmptyState message="No location data available for this vehicle." />
           ) : (
-            <MapLite key={vehicleId} readings={[latestQuery.data]} />
+            <MapLite key={vehicleId} readings={[latestQuery.data]} vehicle={vehicle} />
           )}
         </div>
       </div>

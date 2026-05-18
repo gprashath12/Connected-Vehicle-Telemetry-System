@@ -5,13 +5,13 @@ import com.telemetry.entity.Role;
 import com.telemetry.entity.User;
 import com.telemetry.entity.Vehicle;
 import com.telemetry.entity.VehicleReading;
+import com.telemetry.exception.VehicleAccessDeniedException;
+import com.telemetry.exception.VehicleNotFoundException;
 import com.telemetry.repository.VehicleReadingRepository;
 import com.telemetry.repository.VehicleRepository;
 import com.telemetry.util.DistanceUtil;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.*;
 import java.time.format.DateTimeFormatter;
@@ -167,7 +167,7 @@ public class TelemetryService {
             Vehicle v;
             try {
                 v = loadAuthorizedVehicle(id, currentUser);
-            } catch (ResponseStatusException e) {
+            } catch (VehicleNotFoundException | VehicleAccessDeniedException e) {
                 // Skip vehicles the user can't access rather than failing the whole compare.
                 continue;
             }
@@ -191,11 +191,11 @@ public class TelemetryService {
 
     private Vehicle loadAuthorizedVehicle(Long id, User currentUser) {
         Vehicle v = vehicleRepo.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Vehicle not found"));
+                .orElseThrow(VehicleNotFoundException::new);
         if (currentUser.getRole() != Role.ADMIN) {
             Long ownerId = v.getOwnerId();
             if (ownerId == null || !ownerId.equals(currentUser.getUserId())) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not your vehicle");
+                throw new VehicleAccessDeniedException();
             }
         }
         return v;

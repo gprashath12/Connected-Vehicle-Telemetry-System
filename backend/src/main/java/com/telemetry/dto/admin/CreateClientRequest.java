@@ -16,8 +16,9 @@ public class CreateClientRequest {
     @Email
     private String email;
 
+    @NotBlank
     @Size(min = 6, max = 100)
-    private String password; // null/blank = auto-generate
+    private String password;
 
     private String status = "ACTIVE"; // ACTIVE | INACTIVE
 }

@@ -1,11 +1,10 @@
-import { useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { useMemo, useState } from 'react';
+import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { fmtSpeed, fmtDateTime } from '../../lib/formatters';
+import { fmtSpeed, fmtTemp } from '../../lib/formatters';
 import { getVehicleStatus } from './VehicleFilterBar';
 
-// Reuse the same icon-fix pattern already used by MapLite.jsx
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -35,15 +34,14 @@ function divIcon(status) {
     className: 'fleet-map-marker',
     iconSize: [18, 18],
     iconAnchor: [9, 9],
-    popupAnchor: [0, -10],
   });
 }
 
-const STATUS_POPUP_STYLES = {
-  ACTIVE:      'color:#059669;font-weight:600',
-  IDLE:        'color:#d97706;font-weight:600',
-  INACTIVE:    'color:#64748b',
-  MAINTENANCE: 'color:#dc2626;font-weight:600',
+const STATUS_COLORS_TEXT = {
+  ACTIVE:      '#059669',
+  IDLE:        '#d97706',
+  INACTIVE:    '#64748b',
+  MAINTENANCE: '#dc2626',
 };
 
 const STATUS_LABELS = {
@@ -62,11 +60,15 @@ function PulseStyles() {
       }
       .leaflet-container { background: #e2e8f0; }
       html.dark .leaflet-container { background: #1e293b; }
+      .fleet-map-marker { cursor: pointer !important; }
     `}</style>
   );
 }
 
 export default function FleetMap({ fleet = [], height = 380 }) {
+  const [activeVehicle, setActiveVehicle] = useState(null);
+  const [pinnedVehicle, setPinnedVehicle] = useState(null);
+
   const points = useMemo(
     () =>
       fleet.filter(
@@ -95,8 +97,13 @@ export default function FleetMap({ fleet = [], height = 380 }) {
     return c;
   }, [points]);
 
+  const displayed = activeVehicle ?? pinnedVehicle;
+
   return (
-    <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-sm">
+    <div
+      className="rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm"
+      style={{ position: 'relative', overflow: 'hidden' }}
+    >
       <PulseStyles />
       <MapContainer
         center={center}
@@ -115,32 +122,47 @@ export default function FleetMap({ fleet = [], height = 380 }) {
               key={v.vehicleid}
               position={[v.lat, v.lon]}
               icon={divIcon(status)}
-            >
-              <Popup>
-                <div style={{ minWidth: '180px' }} className="text-sm space-y-1">
-                  <p className="font-semibold">{v.name || `Vehicle #${v.vehicleid}`}</p>
-                  <p className="text-xs text-slate-500">
-                    {v.manufacturer} {v.model} · {v.vehicle_code}
-                  </p>
-                  <p><strong>Owner:</strong> {v.ownerName || '—'}</p>
-                  <p><strong>Speed:</strong> {fmtSpeed(v.currentSpeed)}</p>
-                  <p>
-                    <strong>Status:</strong>{' '}
-                    <span style={STATUS_POPUP_STYLES[status] ?? ''}>
-                      {STATUS_LABELS[status] ?? status}
-                    </span>
-                  </p>
-                  {v.lastSeenTs && (
-                    <p className="text-xs text-slate-500">
-                      Last seen: {fmtDateTime(v.lastSeenTs)}
-                    </p>
-                  )}
-                </div>
-              </Popup>
-            </Marker>
+              eventHandlers={{
+                mouseover: () => setActiveVehicle({ v, status }),
+                mouseout: () => setActiveVehicle(null),
+                click: (e) => {
+                  e.originalEvent.stopPropagation();
+                  setPinnedVehicle((prev) =>
+                    prev?.v.vehicleid === v.vehicleid ? null : { v, status },
+                  );
+                },
+              }}
+            />
           );
         })}
       </MapContainer>
+
+      {/* Info card — React overlay, not Leaflet Tooltip */}
+      {displayed && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 10,
+            left: 54,
+            zIndex: 1000,
+            pointerEvents: 'none',
+            minWidth: 165,
+          }}
+          className="bg-white dark:bg-slate-800 rounded-lg shadow-lg px-3 py-2 text-xs text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
+        >
+          <p className="font-semibold text-slate-900 dark:text-slate-100 mb-1">
+            {displayed.v.name || displayed.v.vehicle_code}
+          </p>
+          <p className="my-0.5">Speed: <span className="font-medium">{fmtSpeed(displayed.v.currentSpeed)}</span></p>
+          <p className="my-0.5">Engine Temp: <span className="font-medium">{fmtTemp(displayed.v.currentEngineTemp)}</span></p>
+          <p className="my-0.5">
+            Status:{' '}
+            <span style={{ color: STATUS_COLORS_TEXT[displayed.status] ?? '#64748b', fontWeight: 600 }}>
+              {STATUS_LABELS[displayed.status] ?? displayed.status}
+            </span>
+          </p>
+        </div>
+      )}
 
       <div className="flex items-center justify-between px-4 py-2 bg-slate-50 dark:bg-slate-800/60 text-xs text-slate-500 dark:text-slate-400">
         <span>

@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { useEffect, useRef, useState } from 'react';
+import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { fmtSpeed, fmtTemp, fmtDateTime } from '../../lib/formatters';
@@ -11,7 +11,6 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-// Amber = idle (speed 0), green = moving
 function liveIcon(speed) {
   const isIdle = Number(speed) === 0;
   const dot = isIdle ? '#f59e0b' : '#10b981';
@@ -24,11 +23,9 @@ function liveIcon(speed) {
       <span style="position:absolute;inset:0;border-radius:9999px;background:${dot};border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.25);"></span>
     </div>
   `;
-  return L.divIcon({ html, className: 'map-lite-marker', iconSize: [18, 18], iconAnchor: [9, 9], popupAnchor: [0, -10] });
+  return L.divIcon({ html, className: 'map-lite-marker', iconSize: [18, 18], iconAnchor: [9, 9] });
 }
 
-// Imperatively pans the map when lat/lon change — more reliable than
-// relying on MapContainer's immutable center prop.
 function PanToOnUpdate({ lat, lon }) {
   const map = useMap();
   useEffect(() => {
@@ -37,21 +34,18 @@ function PanToOnUpdate({ lat, lon }) {
   return null;
 }
 
-export default function MapLite({ readings = [] }) {
+export default function MapLite({ readings = [], vehicle = null }) {
   if (!readings.length) return null;
-
   const latest = readings[readings.length - 1];
   if (latest?.lat == null || latest?.lon == null) return null;
-
-  return <LiveMap latest={latest} />;
+  return <LiveMap latest={latest} vehicle={vehicle} />;
 }
 
-// Separate component so hooks (markerRef, useEffect) always run with valid data.
-function LiveMap({ latest }) {
+function LiveMap({ latest, vehicle }) {
   const markerRef = useRef(null);
+  const [hovered, setHovered] = useState(false);
+  const [pinned, setPinned] = useState(false);
 
-  // Imperative marker position update — ensures the pin moves even if
-  // react-leaflet's declarative position prop doesn't trigger a re-paint.
   useEffect(() => {
     if (markerRef.current) {
       markerRef.current.setLatLng([latest.lat, latest.lon]);
@@ -59,9 +53,13 @@ function LiveMap({ latest }) {
   }, [latest.lat, latest.lon]);
 
   const isIdle = Number(latest.speed) === 0;
+  const showCard = hovered || pinned;
 
   return (
-    <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-sm">
+    <div
+      className="rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm"
+      style={{ position: 'relative', overflow: 'hidden' }}
+    >
       <style>{`
         @keyframes map-lite-pulse {
           0%   { transform: scale(0.6); opacity: 0.9; }
@@ -69,7 +67,9 @@ function LiveMap({ latest }) {
         }
         .leaflet-container { background: #e2e8f0; }
         html.dark .leaflet-container { background: #1e293b; }
+        .map-lite-marker { cursor: pointer !important; }
       `}</style>
+
       <MapContainer
         center={[latest.lat, latest.lon]}
         zoom={14}
@@ -84,23 +84,46 @@ function LiveMap({ latest }) {
           ref={markerRef}
           position={[latest.lat, latest.lon]}
           icon={liveIcon(latest.speed)}
-        >
-          <Popup>
-            <div style={{ minWidth: '160px' }} className="text-sm space-y-1">
-              <p>
-                <strong>Status:</strong>{' '}
-                <span style={isIdle ? 'color:#d97706;font-weight:600' : 'color:#059669;font-weight:600'}>
-                  {isIdle ? 'Idle' : 'Active'}
-                </span>
-              </p>
-              <p><strong>Speed:</strong> {fmtSpeed(latest.speed)}</p>
-              <p><strong>Engine Temp:</strong> {fmtTemp(latest.engineTemp)}</p>
-              <p><strong>Updated:</strong> {fmtDateTime(latest.ts)}</p>
-            </div>
-          </Popup>
-        </Marker>
+          eventHandlers={{
+            mouseover: () => setHovered(true),
+            mouseout: () => setHovered(false),
+            click: (e) => {
+              e.originalEvent.stopPropagation();
+              setPinned((p) => !p);
+            },
+          }}
+        />
         <PanToOnUpdate lat={latest.lat} lon={latest.lon} />
       </MapContainer>
+
+      {/* Info card — React overlay, not Leaflet Tooltip, so it always renders correctly */}
+      {showCard && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 10,
+            left: 54,
+            zIndex: 1000,
+            pointerEvents: 'none',
+            minWidth: 155,
+          }}
+          className="bg-white dark:bg-slate-800 rounded-lg shadow-lg px-3 py-2 text-xs text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
+        >
+          {vehicle && (
+            <p className="font-semibold text-slate-900 dark:text-slate-100 mb-1">
+              {vehicle.name || vehicle.vehicle_code}
+            </p>
+          )}
+          <p className="my-0.5">Speed: <span className="font-medium">{fmtSpeed(latest.speed)}</span></p>
+          <p className="my-0.5">Engine Temp: <span className="font-medium">{fmtTemp(latest.engineTemp)}</span></p>
+          <p className="my-0.5">
+            Status:{' '}
+            <span style={{ color: isIdle ? '#d97706' : '#059669', fontWeight: 600 }}>
+              {isIdle ? 'Idle' : 'Active'}
+            </span>
+          </p>
+        </div>
+      )}
 
       <div className="flex items-center justify-between px-4 py-2 bg-slate-50 dark:bg-slate-800/60 text-xs text-slate-500 dark:text-slate-400">
         <span className="flex items-center gap-1.5">

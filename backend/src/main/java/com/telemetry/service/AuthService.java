@@ -4,13 +4,13 @@ import com.telemetry.dto.auth.LoginRequest;
 import com.telemetry.dto.auth.RegisterRequest;
 import com.telemetry.entity.Role;
 import com.telemetry.entity.User;
+import com.telemetry.exception.EmailAlreadyRegisteredException;
+import com.telemetry.exception.InvalidCredentialsException;
 import com.telemetry.repository.UserRepository;
 import com.telemetry.security.JwtService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 
@@ -26,7 +26,7 @@ public class AuthService {
 
     public AuthResult register(RegisterRequest req) {
         if (userRepo.existsByEmail(req.getEmail())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already registered");
+            throw new EmailAlreadyRegisteredException();
         }
         User u = User.builder()
                 .email(req.getEmail().trim().toLowerCase())
@@ -41,9 +41,9 @@ public class AuthService {
 
     public AuthResult login(LoginRequest req) {
         User u = userRepo.findByEmail(req.getEmail().trim().toLowerCase())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
+                .orElseThrow(InvalidCredentialsException::new);
         if (!encoder.matches(req.getPassword(), u.getPasswordHash())) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
+            throw new InvalidCredentialsException();
         }
         return new AuthResult(jwtService.generate(u.getUserId(), u.getEmail(), u.getRole()), u);
     }

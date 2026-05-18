@@ -6,20 +6,22 @@ import com.telemetry.entity.Role;
 import com.telemetry.entity.User;
 import com.telemetry.entity.Vehicle;
 import com.telemetry.entity.VehicleReading;
+import com.telemetry.exception.*;
 import com.telemetry.repository.UserRepository;
 import com.telemetry.repository.VehicleReadingRepository;
 import com.telemetry.repository.VehicleRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -73,33 +75,28 @@ public class AdminService {
 
     public CreateClientResponse createClient(CreateClientRequest req) {
         if (userRepo.existsByEmail(req.getEmail().trim().toLowerCase())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already registered");
-        }
-        String rawPassword = req.getPassword();
-        boolean generated = rawPassword == null || rawPassword.isBlank();
-        if (generated) {
-            rawPassword = generatePassword();
+            throw new EmailAlreadyRegisteredException();
         }
         User u = User.builder()
                 .email(req.getEmail().trim().toLowerCase())
-                .passwordHash(passwordEncoder.encode(rawPassword))
+                .passwordHash(passwordEncoder.encode(req.getPassword()))
                 .fullName(req.getFullName().trim())
                 .role(Role.CLIENT)
                 .status(req.getStatus() != null ? req.getStatus() : "ACTIVE")
                 .createdAt(Instant.now())
                 .build();
         u = userRepo.save(u);
-        return new CreateClientResponse(ClientDto.from(u), generated ? rawPassword : null);
+        return new CreateClientResponse(ClientDto.from(u), null);
     }
 
     public VehicleDto createVehicleForClient(Long clientId, CreateVehicleRequest req) {
         User client = userRepo.findById(clientId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Client not found"));
+                .orElseThrow(ClientNotFoundException::new);
         if (client.getRole() != Role.CLIENT) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User is not a client");
+            throw new NotAClientException();
         }
         if (vehicleRepo.existsByVehicleCode(req.getRegistrationPlate())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Registration plate already exists");
+            throw new RegistrationPlateExistsException();
         }
         Vehicle v = new Vehicle();
         v.setVehicle_code(req.getRegistrationPlate());
@@ -120,37 +117,19 @@ public class AdminService {
 
     public List<VehicleDto> listVehiclesForClient(Long clientId) {
         if (!userRepo.existsById(clientId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Client not found");
+            throw new ClientNotFoundException();
         }
         return vehicleRepo.findByOwnerOrdered(clientId).stream()
                 .map(VehicleDto::from)
                 .toList();
     }
 
-    private static String generatePassword() {
-        String upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-        String lower = "abcdefghijklmnopqrstuvwxyz";
-        String digits = "0123456789";
-        String all = upper + lower + digits;
-        Random rng = new Random();
-        char[] pw = new char[10];
-        pw[0] = upper.charAt(rng.nextInt(upper.length()));
-        pw[1] = lower.charAt(rng.nextInt(lower.length()));
-        pw[2] = digits.charAt(rng.nextInt(digits.length()));
-        for (int i = 3; i < 10; i++) pw[i] = all.charAt(rng.nextInt(all.length()));
-        for (int i = pw.length - 1; i > 0; i--) {
-            int j = rng.nextInt(i + 1);
-            char tmp = pw[i]; pw[i] = pw[j]; pw[j] = tmp;
-        }
-        return new String(pw);
-    }
-
     @Transactional
     public void deleteClient(Long clientId) {
         User client = userRepo.findById(clientId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Client not found"));
+                .orElseThrow(ClientNotFoundException::new);
         if (client.getRole() != Role.CLIENT) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User is not a client");
+            throw new NotAClientException();
         }
         List<Vehicle> vehicles = vehicleRepo.findByOwnerOrdered(clientId);
         for (Vehicle v : vehicles) {
@@ -163,7 +142,7 @@ public class AdminService {
     @Transactional
     public void deleteVehicle(Long vehicleId) {
         Vehicle vehicle = vehicleRepo.findById(vehicleId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Vehicle not found"));
+                .orElseThrow(VehicleNotFoundException::new);
         readingRepo.deleteByVehicleid(vehicleId);
         vehicleRepo.delete(vehicle);
     }
